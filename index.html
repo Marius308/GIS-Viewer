@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GIS Viewer – Comune Iași</title>
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Marker Cluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100vh; width: 100%; }
+    .leaflet-control.attribution { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script>
+    // 1) Inițializează harta
+    const map = L.map('map').setView([47.1, 27.5], 9);
+
+    // 2) Fundal OSM
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap | Leaflet'
+    }).addTo(map);
+
+    // 3) Grup pentru clustere
+    const clusterGroup = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      maxClusterRadius: 60
+    });
+
+    // 4) Datele GeoJSON (puncte în comunele din Iași)
+    const iasiComune = {
+      "type": "FeatureCollection",
+      "features": [
+        {"type":"Feature","properties":{"nume":"Iași"},"geometry":{"type":"Point","coordinates":[27.5949,47.1585]}},
+        {"type":"Feature","properties":{"nume":"Miroslava"},"geometry":{"type":"Point","coordinates":[27.4822,47.1317]}},
+        {"type":"Feature","properties":{"nume":"Valea Lupului"},"geometry":{"type":"Point","coordinates":[27.5025,47.1769]}},
+        {"type":"Feature","properties":{"nume":"Tomești"},"geometry":{"type":"Point","coordinates":[27.6858,47.1365]}},
+        {"type":"Feature","properties":{"nume":"Holboca"},"geometry":{"type":"Point","coordinates":[27.6842,47.1525]}},
+        {"type":"Feature","properties":{"nume":"Rediu"},"geometry":{"type":"Point","coordinates":[27.5195,47.1723]}},
+        {"type":"Feature","properties":{"nume":"Ciurea"},"geometry":{"type":"Point","coordinates":[27.5623,47.0668]}},
+        {"type":"Feature","properties":{"nume":"Bârnova"},"geometry":{"type":"Point","coordinates":[27.6145,47.0679]}},
+        {"type":"Feature","properties":{"nume":"Lețcani"},"geometry":{"type":"Point","coordinates":[27.4055,47.1702]}},
+        {"type":"Feature","properties":{"nume":"Aroneanu"},"geometry":{"type":"Point","coordinates":[27.6195,47.2031]}},
+        {"type":"Feature","properties":{"nume":"Scânteia"},"geometry":{"type":"Point","coordinates":[27.6749,46.9335]}},
+        {"type":"Feature","properties":{"nume":"Dagâța"},"geometry":{"type":"Point","coordinates":[27.1953,46.9979]}},
+        {"type":"Feature","properties":{"nume":"Popricani"},"geometry":{"type":"Point","coordinates":[27.5547,47.2811]}},
+        {"type":"Feature","properties":{"nume":"Prisăcani"},"geometry":{"type":"Point","coordinates":[27.8127,47.0664]}},
+        {"type":"Feature","properties":{"nume":"Țibănești"},"geometry":{"type":"Point","coordinates":[27.3541,46.9828]}},
+        {"type":"Feature","properties":{"nume":"Coarnele Caprei"},"geometry":{"type":"Point","coordinates":[27.1105,47.3101]}},
+        {"type":"Feature","properties":{"nume":"Hălăucești"},"geometry":{"type":"Point","coordinates":[26.8993,47.1705]}},
+        {"type":"Feature","properties":{"nume":"Belcești"},"geometry":{"type":"Point","coordinates":[27.0207,47.3011]}},
+        {"type":"Feature","properties":{"nume":"Răducăneni"},"geometry":{"type":"Point","coordinates":[27.7767,46.9446]}},
+        {"type":"Feature","properties":{"nume":"Scobinți"},"geometry":{"type":"Point","coordinates":[26.9882,47.3814]}}
+      ]
+    };
+
+    // 5) Construiește layerul de puncte + popup
+    const puncteLayer = L.geoJSON(iasiComune, {
+      pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+        radius: 7, fillColor: '#1f78b4', color: '#fff',
+        weight: 1, opacity: 1, fillOpacity: 0.9
+      }),
+      onEachFeature: (feature, layer) => {
+        layer.bindPopup(`<b>${feature.properties.nume}</b>`);
+      }
+    });
+
+    // 6) Pune pe hartă în clustere și ajustează extinderea
+    clusterGroup.addLayer(puncteLayer);
+    map.addLayer(clusterGroup);
+    const b = puncteLayer.getBounds();
+    if (b.isValid()) map.fitBounds(b.pad(0.2));
+  </script>
+</body>
+</html>
