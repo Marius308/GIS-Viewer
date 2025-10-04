@@ -23,8 +23,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <style>
-    html, body { height: 100%; margin: 0; }
-    #map { height: 100vh; width: 100%; }
+    html, body { height:100%; margin:0; }
+    #map { height:100vh; width:100%; }
 
     /* etichete text cu HALO (fără casetă) */
     .leaflet-tooltip {
@@ -40,7 +40,7 @@
       padding: 2px 4px;
     }
 
-    /* panou legendă + straturi (stil IP) */
+    /* panou legendă + straturi (un singur box, stil IP) */
     .panel {
       background:#fff;
       padding:12px 14px;
@@ -56,7 +56,6 @@
     .legend-row{display:flex; align-items:center; gap:8px; margin:6px 0; cursor:pointer;}
     .dot{width:14px; height:14px; border-radius:50%; border:1px solid rgba(0,0,0,.25); flex-shrink:0;}
     .divider{height:1px; background:#e8e8e8; margin:10px 0;}
-
     .btn {
       padding:6px 10px; border:0; border-radius:6px; cursor:pointer;
       background:#1976d2; color:#fff; font-weight:600;
@@ -70,9 +69,6 @@
     }
     .base-switch .btn{background:#fff;color:#222;border:1px solid #ddd}
     .base-switch .btn.active{background:#1976d2;color:#fff;border-color:#1976d2}
-
-    /* control personalizat în dreapta-sus */
-    .leaflet-top.leaflet-right .panel{ margin-top: 60px; } /* lăsăm loc de controlul bazelor */
   </style>
 </head>
 <body>
@@ -86,23 +82,17 @@
 
   <script>
     // ===== 1) HARTA + baze =====
-    const IASI_CENTER = L.latLng(47.1585, 27.5949);
-
-    const map = L.map('map', {
-      center: IASI_CENTER,
-      zoom: 9
-    });
+    const IASI_CENTER = L.latLng(47.1585, 27.5949); // Piața Unirii
+    const map = L.map('map', { center: IASI_CENTER, zoom: 9 });
 
     const baseOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    const baseSAT = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/' +
-      'World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    const baseSAT = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19, attribution: '© Esri'
     });
 
-    // comutator baze
     document.getElementById('baseSwitch').addEventListener('click', (e)=>{
       const btn = e.target.closest('button'); if(!btn) return;
       document.querySelectorAll('#baseSwitch .btn').forEach(b=>b.classList.remove('active'));
@@ -114,7 +104,8 @@
     // clustere
     const clusterGroup = L.markerClusterGroup({
       showCoverageOnHover:false,
-      maxClusterRadius:60
+      maxClusterRadius:60,
+      disableClusteringAtZoom: 13
     });
 
     // straturi vector
@@ -123,8 +114,9 @@
     const layerPointsByInterval = {};         // puncte pe fiecare interval
     const ALL_POINTS = []; // pentru fitBounds
     let currentRouteLayer = null;
+    let showRoute = true;  // switch din „Straturi”
 
-    // ===== 2) culori + intervale =====
+    // ===== 2) culori + intervale DISTINCTE =====
     const PALETTE = [
       '#1f77b4', // 0–5
       '#17becf', // 5–10
@@ -157,121 +149,118 @@
     }
     const INTERVAL_ORDER = ['0–5 km','5–10 km','10–15 km','15–20 km','20–25 km','25–30 km','30–35 km','>35 km'];
 
-    // ===== 3) sursa date (ArcGIS REST) =====
+    // ===== 3) SURSE DATE =====
     const UAT_ENDPOINT =
       'https://portal-gis.rowater.ro/maps/rest/services/Administrativ/Limita_UAT/MapServer/0/query';
-
-    // acceptă Iasi/Iași/Iaşi etc.
-    const WHERE_UAT = encodeURIComponent(
-      "Judet IN ('Iasi','Iași','Iaşi','IASI','IAȘI','IAŞI')"
-    );
+    const WHERE_UAT = encodeURIComponent("Judet IN ('Iasi','Iași','Iaşi','IASI','IAȘI','IAŞI')");
     const UAT_URL = `${UAT_ENDPOINT}?where=${WHERE_UAT}&outFields=OBJECTID,Denumire,Judet` +
-                    `&returnGeometry=true&outSR=4326&f=geojson`;
+                    `&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=5000`;
 
     const COUNTY_ENDPOINT =
       'https://portal-gis.rowater.ro/maps/rest/services/Administrativ/Limita_Judete/MapServer/0/query';
     const COUNTY_URL = `${COUNTY_ENDPOINT}?where=1%3D1&outFields=OBJECTID,Nume,Judet,NUME_JUD` +
                        `&returnGeometry=true&outSR=4326&f=geojson`;
 
-    // ===== 4) încarcă UAT + desenează =====
-    fetch(UAT_URL).then(r=>r.json()).then(geo=>{
-      if(!geo || !geo.features) throw new Error('Nu s-au găsit UAT-uri.');
+    // ===== 4) ÎNCĂRCARE DATE (robust, cu fallback) =====
+    (async function init(){
+      try{
+        const resp = await fetch(UAT_URL, {mode:'cors'});
+        const geo = await resp.json();
+        if(!geo || !geo.features) throw new Error('Nu s-au găsit UAT-uri.');
 
-      // 4.1 limite comune (linie gri punctată)
-      const communesOutline = L.geoJSON(geo, {
-        style: {
-          color:'#777', weight:1, opacity:0.9,
-          dashArray:'4 4', fill:false
-        }
-      });
-      layerCommuneLines.addLayer(communesOutline).addTo(map);
+        // 4.1 Limite comune (gri punctat)
+        const communesOutline = L.geoJSON(geo, {
+          style: {color:'#777', weight:1, opacity:0.9, dashArray:'4 4', fill:false}
+        });
+        layerCommuneLines.addLayer(communesOutline).addTo(map);
 
-      // 4.2 punctele (centroide) colorate pe intervale
-      geo.features.forEach(f=>{
-        const name = f.properties.Denumire || 'Fără nume';
-        const centroid = turf.centroid(f);
-        const [lng, lat] = centroid.geometry.coordinates;
-        const latlng = L.latLng(lat, lng);
-        const d = map.distance(IASI_CENTER, latlng)/1000;
-        const color = colorByDist(d);
-        const interval = intervalLabel(d);
+        // 4.2 Puncte (centroide) colorate
+        geo.features.forEach(f=>{
+          const name = f.properties.Denumire || 'Fără nume';
+          const centroid = turf.centroid(f);
+          const [lng, lat] = centroid.geometry.coordinates;
+          const latlng = L.latLng(lat, lng);
+          const d = map.distance(IASI_CENTER, latlng)/1000;
+          const color = colorByDist(d);
+          const interval = intervalLabel(d);
 
-        const marker = L.circleMarker(latlng, {
-          radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.95
-        })
-        .bindTooltip(name, {permanent:true, direction:'top', offset:[0,-10]})
-        .bindPopup(`
-          <details open class="popup-section">
-            <summary><b>Date generale</b></summary>
-            Distanță față de Iași: <b>${d.toFixed(1)} km</b><br/>
-            UAT: ${name}
-          </details>
-          <details class="popup-section">
-            <summary><b>Date geografice</b></summary>
-            Climat: temperat-continental<br/>
-            Altitudine min.: — m<br/>
-            Altitudine max.: — m
-          </details>
-          <button class="btn" id="btn-${encodeURIComponent(name)}">Vezi ruta</button>
-        `);
+          const marker = L.circleMarker(latlng, {
+            radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.95
+          })
+          .bindTooltip(name, {permanent:true, direction:'top', offset:[0,-10]})
+          .bindPopup(`
+            <details open class="popup-section">
+              <summary><b>Date generale</b></summary>
+              Distanță față de Iași: <b>${d.toFixed(1)} km</b><br/>
+              UAT: ${name}
+            </details>
+            <details class="popup-section">
+              <summary><b>Date geografice</b></summary>
+              Climat: temperat-continental<br/>
+              Altitudine min.: — m<br/>
+              Altitudine max.: — m
+            </details>
+            <button class="btn" id="btn-${encodeURIComponent(name)}">Vezi ruta</button>
+          `);
 
-        marker.on('popupopen', ()=>{
-          const btn = document.getElementById(`btn-${encodeURIComponent(name)}`);
-          if(!btn) return;
-          btn.onclick = async ()=>{
-            btn.disabled = true; btn.textContent='Calculez ruta…';
-            if(currentRouteLayer){ map.removeLayer(currentRouteLayer); currentRouteLayer=null; }
-            try{
-              const url = `https://router.project-osrm.org/route/v1/driving/`+
-                          `${IASI_CENTER.lng},${IASI_CENTER.lat};${lng},${lat}`+
-                          `?overview=full&geometries=geojson`;
-              const res = await fetch(url);
-              const js  = await res.json();
-              if(!js.routes || !js.routes[0]) throw new Error('Fără rută');
-              const route = js.routes[0];
-              const coords = route.geometry.coordinates.map(([LNG,LAT])=>[LAT,LNG]);
-              currentRouteLayer = L.polyline(coords,{color:color,weight:4}).addTo(map);
-              map.fitBounds(currentRouteLayer.getBounds().pad(0.25));
+          marker.on('popupopen', ()=>{
+            const btn = document.getElementById(`btn-${encodeURIComponent(name)}`);
+            if(!btn) return;
+            btn.onclick = async ()=>{
+              btn.disabled = true; btn.textContent='Calculez ruta…';
+              if(currentRouteLayer){ map.removeLayer(currentRouteLayer); currentRouteLayer=null; }
+              try{
+                const url = `https://router.project-osrm.org/route/v1/driving/`+
+                            `${IASI_CENTER.lng},${IASI_CENTER.lat};${lng},${lat}`+
+                            `?overview=full&geometries=geojson`;
+                const r = await fetch(url);
+                const j = await r.json();
+                if(!j.routes || !j.routes[0]) throw new Error('Fără rută');
+                const coords = j.routes[0].geometry.coordinates.map(([LNG,LAT])=>[LAT,LNG]);
+                currentRouteLayer = L.polyline(coords,{color:color,weight:4});
+                if(showRoute) currentRouteLayer.addTo(map);
+                map.fitBounds(currentRouteLayer.getBounds().pad(0.25));
+                const km  = (j.routes[0].distance/1000).toFixed(1);
+                const min = Math.round(j.routes[0].duration/60);
+                const extra = document.createElement('div');
+                extra.style.marginTop='6px';
+                extra.innerHTML=`Distanță pe drum: <b>${km} km</b> · Timp: <b>${min} min</b>`;
+                btn.parentElement.appendChild(extra);
+              }catch(e){ alert('Nu am putut calcula ruta acum.'); }
+              finally{ btn.disabled=false; btn.textContent='Vezi ruta'; }
+            };
+          });
 
-              const km  = (route.distance/1000).toFixed(1);
-              const min = Math.round(route.duration/60);
-              const extra = document.createElement('div');
-              extra.style.marginTop='6px';
-              extra.innerHTML=`Distanță pe drum: <b>${km} km</b> · Timp: <b>${min} min</b>`;
-              btn.parentElement.appendChild(extra);
-            }catch(e){ alert('Nu am putut calcula ruta acum.'); }
-            finally{ btn.disabled=false; btn.textContent='Vezi ruta'; }
-          };
+          if(!layerPointsByInterval[interval]) layerPointsByInterval[interval]=L.layerGroup();
+          layerPointsByInterval[interval].addLayer(marker);
+          ALL_POINTS.push(latlng);
         });
 
-        if(!layerPointsByInterval[interval]) layerPointsByInterval[interval]=L.layerGroup();
-        layerPointsByInterval[interval].addLayer(marker);
-        ALL_POINTS.push(latlng);
-      });
+        // pune punctele în clustere
+        Object.values(layerPointsByInterval).forEach(g=>clusterGroup.addLayer(g));
+        map.addLayer(clusterGroup);
+        if(ALL_POINTS.length) map.fitBounds(L.latLngBounds(ALL_POINTS).pad(0.25));
 
-      // adaugă punctele în clustere
-      Object.values(layerPointsByInterval).forEach(g=>clusterGroup.addLayer(g));
-      map.addLayer(clusterGroup);
-      if(ALL_POINTS.length) map.fitBounds(L.latLngBounds(ALL_POINTS).pad(0.25));
+        // limită județ (din serviciu; dacă nu, fallback prin union)
+        await addCountyBoundary(geo);
 
-      buildLegend();       // legendă + filtrare
-      buildLayersPanel();  // grup “Straturi”
+        // panou unic: legendă + straturi
+        buildUnifiedPanel();
 
-      // 4.3 limită județ – încearcă din serviciul judete, altfel dizolvă UAT-urile
-      addCountyBoundary(geo).catch(()=>{});
-    }).catch(err=>{
-      console.error(err);
-      alert('Nu am putut încărca datele UAT (server indisponibil).');
-    });
+      }catch(err){
+        console.error(err);
+        alert('Nu am putut încărca datele UAT (server indisponibil).');
+      }
+    })();
 
-    // ===== 5) limită județ =====
+    // ===== 5) LIMITA JUDEȚ =====
     async function addCountyBoundary(uatGeo){
       try{
-        const r = await fetch(COUNTY_URL);
+        const r = await fetch(COUNTY_URL, {mode:'cors'});
         const g = await r.json();
         const found = (g.features||[]).find(f=>{
-          const props = f.properties||{};
-          const name  = (props.Nume||props.Judet||props.NUME_JUD||'').toString().toLowerCase();
+          const p = f.properties||{};
+          const name = (p.Nume||p.Judet||p.NUME_JUD||'').toString().toLowerCase();
           return name.includes('iasi') || name.includes('iași') || name.includes('iaşi');
         });
         if(found){
@@ -279,9 +268,9 @@
           layerCountyLine.addTo(map);
           return;
         }
-      }catch(e){ /* cade în fallback */ }
+      }catch(e){ /* fallback below */ }
 
-      // fallback: unire (dissolve) poligoane UAT -> limită județ
+      // fallback: union UAT -> limită județ
       try{
         let union = null;
         (uatGeo.features||[]).forEach(f=>{
@@ -294,50 +283,31 @@
       }catch(e){ console.warn('Nu am putut crea limita județ:', e); }
     }
 
-    // ===== 6) LEGENDĂ (click pe bulină => filtrare) =====
+    // ===== 6) PANOU UNIC: LEGENDĂ + STRATURI =====
     let activeInterval = null; // null = toate
-    function buildLegend(){
+
+    function buildUnifiedPanel(){
       const control = L.control({position:'topright'});
       control.onAdd = function(){
         const div = L.DomUtil.create('div','panel');
-        div.innerHTML = `<h4>Distanță față de Iași</h4>`;
-        INTERVAL_ORDER.forEach((label,idx)=>{
+
+        // Legendă
+        div.innerHTML = `<h4>Legendă</h4>`;
+        const order = ['0–5 km','5–10 km','10–15 km','15–20 km','20–25 km','25–30 km','30–35 km','>35 km'];
+        order.forEach((label,idx)=>{
           const color = PALETTE[idx] || PALETTE[PALETTE.length-1];
           const row = document.createElement('div');
           row.className='legend-row';
           row.dataset.interval = label;
           row.innerHTML = `<span class="dot" style="background:${color}"></span> <span>${label}</span>`;
-          row.onclick = () => applyFilter(label);
+          row.onclick = ()=>applyFilter(label);
           div.appendChild(row);
         });
-        div.innerHTML += `<div class="divider"></div>
-          <button class="btn" id="resetFilter">Resetare filtrare</button>`;
-        setTimeout(()=>{
-          document.getElementById('resetFilter').onclick = ()=>applyFilter(null);
-        },0);
-        L.DomEvent.disableClickPropagation(div);
-        L.DomEvent.disableScrollPropagation(div);
-        return div;
-      };
-      control.addTo(map);
-    }
 
-    function applyFilter(interval){
-      activeInterval = interval;
-      clusterGroup.clearLayers();
-      if(interval===null){
-        Object.values(layerPointsByInterval).forEach(g=>clusterGroup.addLayer(g));
-      }else{
-        if(layerPointsByInterval[interval]) clusterGroup.addLayer(layerPointsByInterval[interval]);
-      }
-    }
+        div.innerHTML += `<div class="divider"></div>`;
 
-    // ===== 7) STRATURI (lipit de legendă): Puncte / Limite / Rută =====
-    function buildLayersPanel(){
-      const control = L.control({position:'topright'});
-      control.onAdd = function(){
-        const div = L.DomUtil.create('div','panel');
-        div.innerHTML = `
+        // Straturi
+        const layersHtml = `
           <h4>Straturi</h4>
           <label class="legend-row" style="cursor:default">
             <input type="checkbox" id="chk_points" checked style="margin-right:8px"> Puncte comune
@@ -351,8 +321,15 @@
           <label class="legend-row" style="cursor:default">
             <input type="checkbox" id="chk_route" checked style="margin-right:8px"> Rută (vizibilă)
           </label>
+          <div class="divider"></div>
+          <button class="btn" id="resetFilter">Resetare filtrare</button>
         `;
+        const wrap = document.createElement('div');
+        wrap.innerHTML = layersHtml;
+        div.appendChild(wrap);
+
         setTimeout(()=>{
+          document.getElementById('resetFilter').onclick = ()=>applyFilter(null);
           document.getElementById('chk_points').onchange = (e)=>{
             if(e.target.checked) applyFilter(activeInterval);
             else clusterGroup.clearLayers();
@@ -366,17 +343,32 @@
             else map.removeLayer(layerCountyLine);
           };
           document.getElementById('chk_route').onchange = (e)=>{
+            showRoute = e.target.checked;
             if(currentRouteLayer){
-              if(e.target.checked) currentRouteLayer.addTo(map);
+              if(showRoute) currentRouteLayer.addTo(map);
               else map.removeLayer(currentRouteLayer);
             }
           };
         },0);
+
         L.DomEvent.disableClickPropagation(div);
         L.DomEvent.disableScrollPropagation(div);
         return div;
       };
       control.addTo(map);
+    }
+
+    function applyFilter(interval){
+      activeInterval = interval;  // null = toate
+      const pointsOn = document.getElementById('chk_points') ? document.getElementById('chk_points').checked : true;
+      clusterGroup.clearLayers();
+      if(!pointsOn) return;
+
+      if(interval===null){
+        Object.values(layerPointsByInterval).forEach(g=>clusterGroup.addLayer(g));
+      }else{
+        if(layerPointsByInterval[interval]) clusterGroup.addLayer(layerPointsByInterval[interval]);
+      }
     }
   </script>
 </body>
