@@ -3,7 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GIS Viewer – Comune Iași</title>
+  <title>Comune Iași – Viewer cu rute reale</title>
+
+  <!-- Cache bust, ca să vezi imediat modificările -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -17,71 +22,210 @@
   <style>
     html, body { height: 100%; margin: 0; }
     #map { height: 100vh; width: 100%; }
-    .leaflet-control.attribution { font-size: 12px; }
+    .legend{
+      background:#fff; padding:10px 12px; border-radius:10px;
+      box-shadow:0 2px 10px rgba(0,0,0,.2); line-height:1.6; font-size:14px;
+    }
+    .legend h4{margin:0 0 6px 0; font-size:14px}
+    .legend .row{display:flex;align-items:center;gap:6px}
+    .chip{width:12px;height:12px;border-radius:50%;display:inline-block;border:1px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.2)}
+    .popup-section{margin:8px 0}
+    .popup-section summary{font-weight:600; cursor:pointer}
+    .btn{
+      padding:6px 10px; border:0; border-radius:6px; cursor:pointer;
+      background:#1f78b4; color:#fff;
+    }
+    .btn:disabled{opacity:.6; cursor:not-allowed}
   </style>
 </head>
 <body>
   <div id="map"></div>
 
   <script>
-    // 1) Inițializează harta
-    const map = L.map('map').setView([47.1, 27.5], 9);
-
-    // 2) Fundal OSM
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap | Leaflet'
+    // ===== 1) HARTA DE BAZĂ =====
+    const IAS I_CENTER = L.latLng(47.1585, 27.5949); // Piața Unirii aprox.
+    const map = L.map('map').setView(IASI_CENTER, 9);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      maxZoom: 19, attribution: '© OpenStreetMap | Leaflet'
     }).addTo(map);
 
-    // 3) Grup pentru clustere
+    // grup de clustere
     const clusterGroup = L.markerClusterGroup({
-      showCoverageOnHover: false,
+      showCoverageOnHover:false,
       maxClusterRadius: 60
     });
 
-    // 4) Datele GeoJSON (puncte în comunele din Iași)
-    const iasiComune = {
-      "type": "FeatureCollection",
-      "features": [
-        {"type":"Feature","properties":{"nume":"Iași"},"geometry":{"type":"Point","coordinates":[27.5949,47.1585]}},
-        {"type":"Feature","properties":{"nume":"Miroslava"},"geometry":{"type":"Point","coordinates":[27.4822,47.1317]}},
-        {"type":"Feature","properties":{"nume":"Valea Puli"},"geometry":{"type":"Point","coordinates":[27.5025,47.1769]}},
-        {"type":"Feature","properties":{"nume":"Tomești"},"geometry":{"type":"Point","coordinates":[27.6858,47.1365]}},
-        {"type":"Feature","properties":{"nume":"Holboca"},"geometry":{"type":"Point","coordinates":[27.6842,47.1525]}},
-        {"type":"Feature","properties":{"nume":"Rediu"},"geometry":{"type":"Point","coordinates":[27.5195,47.1723]}},
-        {"type":"Feature","properties":{"nume":"Ciurea"},"geometry":{"type":"Point","coordinates":[27.5623,47.0668]}},
-        {"type":"Feature","properties":{"nume":"Bârnova"},"geometry":{"type":"Point","coordinates":[27.6145,47.0679]}},
-        {"type":"Feature","properties":{"nume":"Lețcani"},"geometry":{"type":"Point","coordinates":[27.4055,47.1702]}},
-        {"type":"Feature","properties":{"nume":"Aroneanu"},"geometry":{"type":"Point","coordinates":[27.6195,47.2031]}},
-        {"type":"Feature","properties":{"nume":"Scânteia"},"geometry":{"type":"Point","coordinates":[27.6749,46.9335]}},
-        {"type":"Feature","properties":{"nume":"Dagâța"},"geometry":{"type":"Point","coordinates":[27.1953,46.9979]}},
-        {"type":"Feature","properties":{"nume":"Popricani"},"geometry":{"type":"Point","coordinates":[27.5547,47.2811]}},
-        {"type":"Feature","properties":{"nume":"Prisăcani"},"geometry":{"type":"Point","coordinates":[27.8127,47.0664]}},
-        {"type":"Feature","properties":{"nume":"Țibănești"},"geometry":{"type":"Point","coordinates":[27.3541,46.9828]}},
-        {"type":"Feature","properties":{"nume":"Coarnele Caprei"},"geometry":{"type":"Point","coordinates":[27.1105,47.3101]}},
-        {"type":"Feature","properties":{"nume":"Hălăucești"},"geometry":{"type":"Point","coordinates":[26.8993,47.1705]}},
-        {"type":"Feature","properties":{"nume":"Belcești"},"geometry":{"type":"Point","coordinates":[27.0207,47.3011]}},
-        {"type":"Feature","properties":{"nume":"Răducăneni"},"geometry":{"type":"Point","coordinates":[27.7767,46.9446]}},
-        {"type":"Feature","properties":{"nume":"Scobinți"},"geometry":{"type":"Point","coordinates":[26.9882,47.3814]}}
-      ]
-    };
+    // ===== 2) DATE SIMPLIFICATE =====
+    // (poți extinde lista oricând)
+    const comune = [
+      {nume:'Iași',lat:47.1585,lon:27.5949,altMin:80,altMax:110,pop:290000},
+      {nume:'Miroslava',lat:47.1317,lon:27.4822,altMin:90,altMax:160,pop:15000},
+      {nume:'Bârnova',lat:47.0679,lon:27.6145,altMin:120,altMax:300,pop:6000},
+      {nume:'Holboca',lat:47.1525,lon:27.6842,altMin:60,altMax:130,pop:11000},
+      {nume:'Ciurea',lat:47.0668,lon:27.5623,altMin:90,altMax:220,pop:17000},
+      {nume:'Lețcani',lat:47.1702,lon:27.4055,altMin:90,altMax:140,pop:8000},
+      {nume:'Scânteia',lat:46.9335,lon:27.6749,altMin:100,altMax:200,pop:4000},
+      {nume:'Popricani',lat:47.2811,lon:27.5547,altMin:80,altMax:170,pop:7500},
+      {nume:'Răducăneni',lat:46.9446,lon:27.7767,altMin:100,altMax:180,pop:5000}
+    ];
 
-    // 5) Construiește layerul de puncte + popup
-    const puncteLayer = L.geoJSON(iasiComune, {
-      pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
-        radius: 7, fillColor: '#1f78b4', color: '#fff',
-        weight: 1, opacity: 1, fillOpacity: 0.9
-      }),
-      onEachFeature: (feature, layer) => {
-        layer.bindPopup(`<b>${feature.properties.nume}</b>`);
-      }
+    // ===== 3) FUNCTII UTILE (DISTANȚĂ, CULORI, INTERVALE) =====
+    function distKm(a, b){ return map.distance(a, b) / 1000; }
+    function colorByDist(d){
+      if (d <= 5)  return '#0033cc';
+      if (d <= 10) return '#0066ff';
+      if (d <= 15) return '#33ccff';
+      if (d <= 20) return '#66ffcc';
+      if (d <= 25) return '#99ff99';
+      if (d <= 30) return '#c6ff99';
+      return '#ffe28a';
+    }
+    function intervalLabel(d){
+      if (d <= 5)  return '0–5 km';
+      if (d <= 10) return '5–10 km';
+      if (d <= 15) return '10–15 km';
+      if (d <= 20) return '15–20 km';
+      if (d <= 25) return '20–25 km';
+      if (d <= 30) return '25–30 km';
+      return '>30 km';
+    }
+
+    // ===== 4) CONSTRUIRE MARKERE + POPUP =====
+    const layersByInterval = {};
+    let allMarkersBounds = [];
+
+    // păstrăm ultima rută pe hartă
+    let currentRouteLayer = null;
+
+    comune.forEach(c => {
+      const latlng = L.latLng(c.lat, c.lon);
+      const d = distKm(IASI_CENTER, latlng);
+      const interval = intervalLabel(d);
+      const color = colorByDist(d);
+
+      // marker cu etichetă permanentă
+      const marker = L.circleMarker(latlng, {
+        radius: 8, fillColor: color, color: '#fff', weight: 1, fillOpacity: 0.9
+      }).bindTooltip(c.nume, {permanent: true, direction: 'top', offset:[0,-10]});
+
+      // popup cu secțiuni expand/collapse + buton rută
+      const density = (c.pop / 20).toFixed(0); // ex. densitate fictivă
+      const popupHTML = `
+        <details class="popup-section" open>
+          <summary>Date generale</summary>
+          Distanță față de Iași: <b>${d.toFixed(1)} km</b><br>
+          Densitatea populației: ${density} loc/km²
+        </details>
+        <details class="popup-section">
+          <summary>Date geografice</summary>
+          Climat: temperat-continental<br>
+          Altitudine min.: ${c.altMin} m<br>
+          Altitudine max.: ${c.altMax} m
+        </details>
+        <button class="btn" id="btn-route-${c.nume.replace(/\s/g,'_')}">Vezi ruta</button>
+      `;
+      marker.bindPopup(popupHTML);
+
+      // la deschiderea popupului, leagă butonul de calculul de rută (OSRM)
+      marker.on('popupopen', () => {
+        const btn = document.getElementById(`btn-route-${c.nume.replace(/\s/g,'_')}`);
+        if (!btn) return;
+        btn.onclick = async () => {
+          btn.disabled = true; btn.textContent = 'Calculez ruta...';
+
+          // șterge ruta anterioară
+          if (currentRouteLayer) { map.removeLayer(currentRouteLayer); currentRouteLayer = null; }
+
+          try {
+            // OSRM public (driving) – NOTE: limitat la uz light
+            const url = `https://router.project-osrm.org/route/v1/driving/` +
+                        `${IASI_CENTER.lng},${IASI_CENTER.lat};${c.lon},${c.lat}` +
+                        `?overview=full&geometries=geojson`;
+            const res = await fetch(url);
+            const json = await res.json();
+
+            if (!json.routes || !json.routes[0]) throw new Error('Fără rută');
+
+            const route = json.routes[0];
+            const coords = route.geometry.coordinates.map(([lng,lat]) => [lat,lng]);
+            currentRouteLayer = L.polyline(coords, {color: color, weight: 4}).addTo(map);
+
+            const km = (route.distance/1000).toFixed(1);
+            const min = Math.round(route.duration/60);
+            map.fitBounds(currentRouteLayer.getBounds().pad(0.25));
+
+            // actualizează popupul cu detalii rutiere
+            const extra = document.createElement('div');
+            extra.style.marginTop = '6px';
+            extra.innerHTML = `Distanță pe drum: <b>${km} km</b> · Timp estimat: <b>${min} min</b>`;
+            btn.parentElement.appendChild(extra);
+          } catch (e) {
+            alert('Nu am putut calcula ruta acum. Încearcă din nou.');
+          } finally {
+            btn.disabled = false; btn.textContent = 'Vezi ruta';
+          }
+        };
+      });
+
+      // grupare pe interval pentru legendă/filtrare
+      if (!layersByInterval[interval]) layersByInterval[interval] = L.layerGroup();
+      layersByInterval[interval].addLayer(marker);
+      allMarkersBounds.push(latlng);
     });
 
-    // 6) Pune pe hartă în clustere și ajustează extinderea
-    clusterGroup.addLayer(puncteLayer);
+    // adaugă toate grupurile în cluster și pe hartă
+    Object.values(layersByInterval).forEach(g => clusterGroup.addLayer(g));
     map.addLayer(clusterGroup);
-    const b = puncteLayer.getBounds();
-    if (b.isValid()) map.fitBounds(b.pad(0.2));
+    if (allMarkersBounds.length){
+      map.fitBounds(L.latLngBounds(allMarkersBounds).pad(0.25));
+    }
+
+    // ===== 5) LEGENDĂ + FILTRARE =====
+    const legend = L.control({position:'topright'});
+    legend.onAdd = function(){
+      const div = L.DomUtil.create('div','legend');
+      div.innerHTML = '<h4>Distanță față de Iași</h4>';
+
+      // ordonează intervalele logic
+      const keys = Object.keys(layersByInterval)
+        .sort((a,b)=>{
+          const na = a==='>30 km' ? 999 : parseInt(a);
+          const nb = b==='>30 km' ? 999 : parseInt(b);
+          return na - nb;
+        });
+
+      keys.forEach(interval=>{
+        // ia o culoare reprezentativă pentru interval (folosim limita inferioară)
+        const base = interval === '>30 km' ? 31 : parseInt(interval);
+        const color = colorByDist(base);
+
+        const id = 'chk-' + interval.replace(/\W/g,'');
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `
+          <input type="checkbox" id="${id}" checked>
+          <span class="chip" style="background:${color}"></span>
+          <label for="${id}" style="cursor:pointer">${interval}</label>
+        `;
+        div.appendChild(row);
+
+        // eveniment: filtrare interval
+        setTimeout(()=>{
+          const chk = document.getElementById(id);
+          chk.addEventListener('change', () => {
+            if (chk.checked) clusterGroup.addLayer(layersByInterval[interval]);
+            else clusterGroup.removeLayer(layersByInterval[interval]);
+          });
+        },0);
+      });
+
+      // blocarea scroll-ului hărții când mouse-ul e peste legendă
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      return div;
+    };
+    legend.addTo(map);
+
   </script>
 </body>
 </html>
