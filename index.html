@@ -1,375 +1,194 @@
 <!DOCTYPE html>
 <html lang="ro">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Comune Iași – Viewer</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GIS Viewer Iași</title>
 
-  <!-- cache-bust -->
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
-  <!-- Marker Cluster -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
-  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
-
-  <!-- turf.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
-
-  <style>
-    html, body { height:100%; margin:0; }
-    #map { height:100vh; width:100%; }
-
-    /* etichete text cu HALO (fără casetă) */
-    .leaflet-tooltip {
-      background: transparent;
-      border: none;
-      box-shadow: none;
-      color: #0c0c0c;
-      font-weight: 600;
-      text-shadow:
-        0 0 2px #fff,
-        0 0 4px #fff,
-        0 0 6px #fff;
-      padding: 2px 4px;
-    }
-
-    /* panou legendă + straturi (un singur box, stil IP) */
-    .panel {
-      background:#fff;
-      padding:12px 14px;
-      border-radius:12px;
-      box-shadow:0 4px 20px rgba(0,0,0,.15);
-      font-size:14px;
-      line-height:1.5;
-      max-width: 300px;
-    }
-    .panel h4{
-      margin:0 0 8px; font-weight:700; font-size:16px;
-    }
-    .legend-row{display:flex; align-items:center; gap:8px; margin:6px 0; cursor:pointer;}
-    .dot{width:14px; height:14px; border-radius:50%; border:1px solid rgba(0,0,0,.25); flex-shrink:0;}
-    .divider{height:1px; background:#e8e8e8; margin:10px 0;}
-    .btn {
-      padding:6px 10px; border:0; border-radius:6px; cursor:pointer;
-      background:#1976d2; color:#fff; font-weight:600;
-    }
-    .btn:disabled{opacity:.6; cursor:not-allowed}
-
-    /* comutator baze hartă */
-    .base-switch{
-      position:absolute; left:12px; top:12px; z-index:1000;
-      display:flex; gap:8px;
-    }
-    .base-switch .btn{background:#fff;color:#222;border:1px solid #ddd}
-    .base-switch .btn.active{background:#1976d2;color:#fff;border-color:#1976d2}
-  </style>
+<style>
+html, body, #map { height: 100%; margin: 0; padding: 0; }
+.leaflet-control-layers {
+  font-size: 14px;
+}
+.legend {
+  background: white;
+  padding: 10px;
+  line-height: 1.4em;
+  border-radius: 6px;
+  box-shadow: 0 0 4px rgba(0,0,0,0.3);
+}
+.legend-title {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+.legend-color {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.popup-section {
+  border-top: 1px solid #ccc;
+  margin-top: 5px;
+  padding-top: 5px;
+}
+button.route-btn {
+  background-color: #0066cc;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button.route-btn:hover {
+  background-color: #004c99;
+}
+</style>
 </head>
+
 <body>
-  <div id="map"></div>
+<div id="map"></div>
 
-  <!-- comutator baze hartă -->
-  <div class="base-switch" id="baseSwitch">
-    <button class="btn active" data-base="osm">OSM</button>
-    <button class="btn" data-base="sat">Satelit</button>
-  </div>
+<script>
+// === 1. Inițializare hartă ===
+var map = L.map('map').setView([47.16, 27.6], 10);
 
-  <script>
-    // ===== 1) HARTA + baze =====
-    const IASI_CENTER = L.latLng(47.1585, 27.5949); // Piața Unirii
-    const map = L.map('map', { center: IASI_CENTER, zoom: 9 });
+// Fundal OSM
+var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 18, attribution: '&copy; OpenStreetMap'
+}).addTo(map);
 
-    const baseOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '© OpenStreetMap'
-    }).addTo(map);
+// Fundal satelit (ESRI)
+var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 18, attribution: '&copy; Esri'
+});
 
-    const baseSAT = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19, attribution: '© Esri'
+// Butoane OSM / Satelit
+var baseMaps = { "OSM": osm, "Satelit": sat };
+
+// === 2. Culori pentru distanță ===
+function getColor(dist) {
+  return dist <= 5  ? '#0055ff' :
+         dist <= 10 ? '#00bfff' :
+         dist <= 15 ? '#00cc44' :
+         dist <= 20 ? '#a6d400' :
+         dist <= 25 ? '#ffaa00' :
+         dist <= 30 ? '#ff6600' :
+         dist <= 35 ? '#cc0000' : '#9933cc';
+}
+
+// === 3. Puncte comune ===
+var comuni = [
+  { nume: "Iași", coord: [47.1585, 27.6014], dist: 0, pop: 290422, altmin: 40, altmax: 250 },
+  { nume: "Miroslava", coord: [47.1317, 27.4822], dist: 7, pop: 18000, altmin: 60, altmax: 240 },
+  { nume: "Holboca", coord: [47.1525, 27.6842], dist: 9, pop: 11000, altmin: 40, altmax: 160 },
+  { nume: "Bârnova", coord: [47.0679, 27.6145], dist: 10, pop: 7000, altmin: 80, altmax: 300 },
+  { nume: "Lețcani", coord: [47.1702, 27.4055], dist: 15, pop: 9000, altmin: 50, altmax: 200 },
+  { nume: "Scânteia", coord: [46.9335, 27.6749], dist: 25, pop: 5000, altmin: 50, altmax: 170 },
+  { nume: "Răducăneni", coord: [46.9446, 27.7767], dist: 30, pop: 8000, altmin: 60, altmax: 190 },
+  { nume: "Hălăucești", coord: [47.1705, 26.8993], dist: 35, pop: 7500, altmin: 120, altmax: 250 },
+];
+
+// Layer pentru puncte
+var clusterGroup = L.markerClusterGroup({ showCoverageOnHover:false, maxClusterRadius: 60 });
+
+var markers = comuni.map(c => {
+  var m = L.circleMarker(c.coord, {
+    radius: 7,
+    color: '#fff',
+    fillColor: getColor(c.dist),
+    fillOpacity: 0.9,
+    weight: 1
+  });
+
+  // popup structurat
+  var popupHTML = `
+    <b>${c.nume}</b>
+    <div class='popup-section'><b>Date generale</b><br>
+      Densitate: ${(c.pop/50).toFixed(1)} loc/km²<br>
+      Distanță față de Iași: ${c.dist} km
+    </div>
+    <div class='popup-section'><b>Date geografice</b><br>
+      Altitudine min.: ${c.altmin} m<br>
+      Altitudine max.: ${c.altmax} m
+    </div>
+    <div class='popup-section'>
+      <button class='route-btn' onclick='drawRoute([47.1585,27.6014],[${c.coord}])'>Vezi rută</button>
+    </div>
+  `;
+  m.bindPopup(popupHTML);
+  m.bindTooltip(c.nume, { permanent: true, direction: 'top', className: 'halo-label' });
+  return m;
+});
+clusterGroup.addLayers(markers);
+map.addLayer(clusterGroup);
+
+// === 4. Ruta Iași - Comună ===
+var routeLayer = L.layerGroup().addTo(map);
+function drawRoute(start, end) {
+  routeLayer.clearLayers();
+  fetch(`https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?geometries=geojson`)
+    .then(r => r.json())
+    .then(data => {
+      const coords = data.routes[0].geometry;
+      L.geoJSON(coords, { style:{ color:'#1f75fe', weight:4 } }).addTo(routeLayer);
+      map.fitBounds(L.geoJSON(coords).getBounds());
     });
+}
 
-    document.getElementById('baseSwitch').addEventListener('click', (e)=>{
-      const btn = e.target.closest('button'); if(!btn) return;
-      document.querySelectorAll('#baseSwitch .btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      if(btn.dataset.base === 'sat'){ map.removeLayer(baseOSM); baseSAT.addTo(map); }
-      else { map.removeLayer(baseSAT); baseOSM.addTo(map); }
-    });
+// === 5. Limite comune și județ (din API Inspectorul Pădurii) ===
+const layerAmenaj = L.layerGroup();
 
-    // clustere
-    const clusterGroup = L.markerClusterGroup({
-      showCoverageOnHover:false,
-      maxClusterRadius:60,
-      disableClusteringAtZoom: 13
-    });
+async function loadAmenaj() {
+  const bbox = [46.9,26.5,47.6,28.1]; // Iași lat,lon,lat,lon
+  const url = `https://inspectorulpadurii.ro/api/layer/harti-amenajistice-stat?bbox=${bbox.join(',')},urn:ogc:def:crs:EPSG:4326`;
+  try {
+    const r = await fetch(url);
+    const g = await r.json();
+    L.geoJSON(g, { style:{ color:'#999', weight:1, dashArray:'4 3' } }).addTo(layerAmenaj);
+  } catch(e) { console.warn(e); }
+}
+loadAmenaj();
 
-    // straturi vector
-    const layerCommuneLines = L.layerGroup(); // limite comune (linie punctată)
-    const layerCountyLine   = L.layerGroup(); // limită județ (linie continuă)
-    const layerPointsByInterval = {};         // puncte pe fiecare interval
-    const ALL_POINTS = []; // pentru fitBounds
-    let currentRouteLayer = null;
-    let showRoute = true;  // switch din „Straturi”
+// === 6. Legendă + Straturi ===
+var legend = L.control({position:'topright'});
+legend.onAdd = function() {
+  var div = L.DomUtil.create('div','legend');
+  div.innerHTML += `<div class='legend-title'>Legendă</div>`;
+  var grades = [0,5,10,15,20,25,30,35];
+  for (var i=0; i<grades.length; i++) {
+    div.innerHTML += `<div><span class='legend-color' style='background:${getColor(grades[i]+1)}'></span>
+      ${grades[i]}–${grades[i+1]||'>'} km</div>`;
+  }
+  div.innerHTML += `<hr><div class='legend-title'>Straturi</div>
+    <label><input type='checkbox' id='chk_points' checked> Puncte comune</label><br>
+    <label><input type='checkbox' id='chk_limits' checked> Limite comune</label><br>
+    <label><input type='checkbox' id='chk_route' checked> Rută (vizibilă)</label>`;
+  return div;
+};
+legend.addTo(map);
 
-    // ===== 2) culori + intervale DISTINCTE =====
-    const PALETTE = [
-      '#1f77b4', // 0–5
-      '#17becf', // 5–10
-      '#2ca02c', // 10–15
-      '#b5bd00', // 15–20
-      '#ffbf00', // 20–25
-      '#ff7f0e', // 25–30
-      '#d62728', // 30–35
-      '#9467bd'  // >35
-    ];
-    function colorByDist(d){
-      if(d<=5)  return PALETTE[0];
-      if(d<=10) return PALETTE[1];
-      if(d<=15) return PALETTE[2];
-      if(d<=20) return PALETTE[3];
-      if(d<=25) return PALETTE[4];
-      if(d<=30) return PALETTE[5];
-      if(d<=35) return PALETTE[6];
-      return PALETTE[7];
-    }
-    function intervalLabel(d){
-      if(d<=5)  return '0–5 km';
-      if(d<=10) return '5–10 km';
-      if(d<=15) return '10–15 km';
-      if(d<=20) return '15–20 km';
-      if(d<=25) return '20–25 km';
-      if(d<=30) return '25–30 km';
-      if(d<=35) return '30–35 km';
-      return '>35 km';
-    }
-    const INTERVAL_ORDER = ['0–5 km','5–10 km','10–15 km','15–20 km','20–25 km','25–30 km','30–35 km','>35 km'];
+// === 7. Control pentru strat ===
+document.getElementById('chk_points').onchange = e => {
+  if(e.target.checked) map.addLayer(clusterGroup); else map.removeLayer(clusterGroup);
+};
+document.getElementById('chk_limits').onchange = e => {
+  if(e.target.checked) map.addLayer(layerAmenaj); else map.removeLayer(layerAmenaj);
+};
+document.getElementById('chk_route').onchange = e => {
+  if(e.target.checked) map.addLayer(routeLayer); else map.removeLayer(routeLayer);
+};
 
-    // ===== 3) SURSE DATE =====
-    const UAT_ENDPOINT =
-      'https://portal-gis.rowater.ro/maps/rest/services/Administrativ/Limita_UAT/MapServer/0/query';
-    const WHERE_UAT = encodeURIComponent("Judet IN ('Iasi','Iași','Iaşi','IASI','IAȘI','IAŞI')");
-    const UAT_URL = `${UAT_ENDPOINT}?where=${WHERE_UAT}&outFields=OBJECTID,Denumire,Judet` +
-                    `&returnGeometry=true&outSR=4326&f=geojson&resultRecordCount=5000`;
+L.control.layers(baseMaps, null, {collapsed:false, position:'topleft'}).addTo(map);
 
-    const COUNTY_ENDPOINT =
-      'https://portal-gis.rowater.ro/maps/rest/services/Administrativ/Limita_Judete/MapServer/0/query';
-    const COUNTY_URL = `${COUNTY_ENDPOINT}?where=1%3D1&outFields=OBJECTID,Nume,Judet,NUME_JUD` +
-                       `&returnGeometry=true&outSR=4326&f=geojson`;
-
-    // ===== 4) ÎNCĂRCARE DATE (robust, cu fallback) =====
-    (async function init(){
-      try{
-        const resp = await fetch(UAT_URL, {mode:'cors'});
-        const geo = await resp.json();
-        if(!geo || !geo.features) throw new Error('Nu s-au găsit UAT-uri.');
-
-        // 4.1 Limite comune (gri punctat)
-        const communesOutline = L.geoJSON(geo, {
-          style: {color:'#777', weight:1, opacity:0.9, dashArray:'4 4', fill:false}
-        });
-        layerCommuneLines.addLayer(communesOutline).addTo(map);
-
-        // 4.2 Puncte (centroide) colorate
-        geo.features.forEach(f=>{
-          const name = f.properties.Denumire || 'Fără nume';
-          const centroid = turf.centroid(f);
-          const [lng, lat] = centroid.geometry.coordinates;
-          const latlng = L.latLng(lat, lng);
-          const d = map.distance(IASI_CENTER, latlng)/1000;
-          const color = colorByDist(d);
-          const interval = intervalLabel(d);
-
-          const marker = L.circleMarker(latlng, {
-            radius:8, fillColor:color, color:'#fff', weight:1, fillOpacity:0.95
-          })
-          .bindTooltip(name, {permanent:true, direction:'top', offset:[0,-10]})
-          .bindPopup(`
-            <details open class="popup-section">
-              <summary><b>Date generale</b></summary>
-              Distanță față de Iași: <b>${d.toFixed(1)} km</b><br/>
-              UAT: ${name}
-            </details>
-            <details class="popup-section">
-              <summary><b>Date geografice</b></summary>
-              Climat: temperat-continental<br/>
-              Altitudine min.: — m<br/>
-              Altitudine max.: — m
-            </details>
-            <button class="btn" id="btn-${encodeURIComponent(name)}">Vezi ruta</button>
-          `);
-
-          marker.on('popupopen', ()=>{
-            const btn = document.getElementById(`btn-${encodeURIComponent(name)}`);
-            if(!btn) return;
-            btn.onclick = async ()=>{
-              btn.disabled = true; btn.textContent='Calculez ruta…';
-              if(currentRouteLayer){ map.removeLayer(currentRouteLayer); currentRouteLayer=null; }
-              try{
-                const url = `https://router.project-osrm.org/route/v1/driving/`+
-                            `${IASI_CENTER.lng},${IASI_CENTER.lat};${lng},${lat}`+
-                            `?overview=full&geometries=geojson`;
-                const r = await fetch(url);
-                const j = await r.json();
-                if(!j.routes || !j.routes[0]) throw new Error('Fără rută');
-                const coords = j.routes[0].geometry.coordinates.map(([LNG,LAT])=>[LAT,LNG]);
-                currentRouteLayer = L.polyline(coords,{color:color,weight:4});
-                if(showRoute) currentRouteLayer.addTo(map);
-                map.fitBounds(currentRouteLayer.getBounds().pad(0.25));
-                const km  = (j.routes[0].distance/1000).toFixed(1);
-                const min = Math.round(j.routes[0].duration/60);
-                const extra = document.createElement('div');
-                extra.style.marginTop='6px';
-                extra.innerHTML=`Distanță pe drum: <b>${km} km</b> · Timp: <b>${min} min</b>`;
-                btn.parentElement.appendChild(extra);
-              }catch(e){ alert('Nu am putut calcula ruta acum.'); }
-              finally{ btn.disabled=false; btn.textContent='Vezi ruta'; }
-            };
-          });
-
-          if(!layerPointsByInterval[interval]) layerPointsByInterval[interval]=L.layerGroup();
-          layerPointsByInterval[interval].addLayer(marker);
-          ALL_POINTS.push(latlng);
-        });
-
-        // pune punctele în clustere
-        Object.values(layerPointsByInterval).forEach(g=>clusterGroup.addLayer(g));
-        map.addLayer(clusterGroup);
-        if(ALL_POINTS.length) map.fitBounds(L.latLngBounds(ALL_POINTS).pad(0.25));
-
-        // limită județ (din serviciu; dacă nu, fallback prin union)
-        await addCountyBoundary(geo);
-
-        // panou unic: legendă + straturi
-        buildUnifiedPanel();
-
-      }catch(err){
-        console.error(err);
-        alert('Nu am putut încărca datele UAT (server indisponibil).');
-      }
-    })();
-
-    // ===== 5) LIMITA JUDEȚ =====
-    async function addCountyBoundary(uatGeo){
-      try{
-        const r = await fetch(COUNTY_URL, {mode:'cors'});
-        const g = await r.json();
-        const found = (g.features||[]).find(f=>{
-          const p = f.properties||{};
-          const name = (p.Nume||p.Judet||p.NUME_JUD||'').toString().toLowerCase();
-          return name.includes('iasi') || name.includes('iași') || name.includes('iaşi');
-        });
-        if(found){
-          L.geoJSON(found, {style:{color:'#555', weight:2, fill:false}}).addTo(layerCountyLine);
-          layerCountyLine.addTo(map);
-          return;
-        }
-      }catch(e){ /* fallback below */ }
-
-      // fallback: union UAT -> limită județ
-      try{
-        let union = null;
-        (uatGeo.features||[]).forEach(f=>{
-          union = union ? turf.union(union,f) : f;
-        });
-        if(union){
-          L.geoJSON(union, {style:{color:'#555', weight:2, fill:false}}).addTo(layerCountyLine);
-          layerCountyLine.addTo(map);
-        }
-      }catch(e){ console.warn('Nu am putut crea limita județ:', e); }
-    }
-
-    // ===== 6) PANOU UNIC: LEGENDĂ + STRATURI =====
-    let activeInterval = null; // null = toate
-
-    function buildUnifiedPanel(){
-      const control = L.control({position:'topright'});
-      control.onAdd = function(){
-        const div = L.DomUtil.create('div','panel');
-
-        // Legendă
-        div.innerHTML = `<h4>Legendă</h4>`;
-        const order = ['0–5 km','5–10 km','10–15 km','15–20 km','20–25 km','25–30 km','30–35 km','>35 km'];
-        order.forEach((label,idx)=>{
-          const color = PALETTE[idx] || PALETTE[PALETTE.length-1];
-          const row = document.createElement('div');
-          row.className='legend-row';
-          row.dataset.interval = label;
-          row.innerHTML = `<span class="dot" style="background:${color}"></span> <span>${label}</span>`;
-          row.onclick = ()=>applyFilter(label);
-          div.appendChild(row);
-        });
-
-        div.innerHTML += `<div class="divider"></div>`;
-
-        // Straturi
-        const layersHtml = `
-          <h4>Straturi</h4>
-          <label class="legend-row" style="cursor:default">
-            <input type="checkbox" id="chk_points" checked style="margin-right:8px"> Puncte comune
-          </label>
-          <label class="legend-row" style="cursor:default">
-            <input type="checkbox" id="chk_communes" checked style="margin-right:8px"> Limite comune
-          </label>
-          <label class="legend-row" style="cursor:default">
-            <input type="checkbox" id="chk_county" checked style="margin-right:8px"> Limită județ
-          </label>
-          <label class="legend-row" style="cursor:default">
-            <input type="checkbox" id="chk_route" checked style="margin-right:8px"> Rută (vizibilă)
-          </label>
-          <div class="divider"></div>
-          <button class="btn" id="resetFilter">Resetare filtrare</button>
-        `;
-        const wrap = document.createElement('div');
-        wrap.innerHTML = layersHtml;
-        div.appendChild(wrap);
-
-        setTimeout(()=>{
-          document.getElementById('resetFilter').onclick = ()=>applyFilter(null);
-          document.getElementById('chk_points').onchange = (e)=>{
-            if(e.target.checked) applyFilter(activeInterval);
-            else clusterGroup.clearLayers();
-          };
-          document.getElementById('chk_communes').onchange = (e)=>{
-            if(e.target.checked) layerCommuneLines.addTo(map);
-            else map.removeLayer(layerCommuneLines);
-          };
-          document.getElementById('chk_county').onchange = (e)=>{
-            if(e.target.checked) layerCountyLine.addTo(map);
-            else map.removeLayer(layerCountyLine);
-          };
-          document.getElementById('chk_route').onchange = (e)=>{
-            showRoute = e.target.checked;
-            if(currentRouteLayer){
-              if(showRoute) currentRouteLayer.addTo(map);
-              else map.removeLayer(currentRouteLayer);
-            }
-          };
-        },0);
-
-        L.DomEvent.disableClickPropagation(div);
-        L.DomEvent.disableScrollPropagation(div);
-        return div;
-      };
-      control.addTo(map);
-    }
-
-    function applyFilter(interval){
-      activeInterval = interval;  // null = toate
-      const pointsOn = document.getElementById('chk_points') ? document.getElementById('chk_points').checked : true;
-      clusterGroup.clearLayers();
-      if(!pointsOn) return;
-
-      if(interval===null){
-        Object.values(layerPointsByInterval).forEach(g=>clusterGroup.addLayer(g));
-      }else{
-        if(layerPointsByInterval[interval]) clusterGroup.addLayer(layerPointsByInterval[interval]);
-      }
-    }
-  </script>
+</script>
 </body>
 </html>
