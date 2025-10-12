@@ -14,17 +14,6 @@
 <style>
 html, body, #map { height: 100%; margin: 0; padding: 0; }
 
-.halo-label {
-  color: #000;
-  text-shadow:
-    -1px -1px 2px #fff,
-    1px -1px 2px #fff,
-    -1px 1px 2px #fff,
-    1px 1px 2px #fff;
-  font-weight: bold;
-  font-size: 13px;
-}
-
 .legend {
   background: white;
   padding: 10px;
@@ -42,6 +31,29 @@ html, body, #map { height: 100%; margin: 0; padding: 0; }
   height: 14px;
   border-radius: 50%;
   margin-right: 6px;
+}
+
+.popup-section {
+  border-top: 1px solid #ccc;
+  margin-top: 5px;
+  padding-top: 5px;
+  font-size: 13px;
+}
+button.route-btn {
+  background-color: #0066cc;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button.route-btn:hover {
+  background-color: #004c99;
+}
+.popup-title {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 4px;
 }
 </style>
 </head>
@@ -61,7 +73,7 @@ var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Worl
 });
 var baseMaps = { "OSM": osm, "Satelit": sat };
 
-// === 2. Culori ===
+// === 2. Funcție culori ===
 function getColor(dist) {
   return dist <= 5  ? '#0055ff' :
          dist <= 10 ? '#00bfff' :
@@ -72,24 +84,24 @@ function getColor(dist) {
          dist <= 35 ? '#cc0000' : '#9933cc';
 }
 
-// === 3. Date comune ===
+// === 3. Date comune (adăugăm și suprafața forestieră în ha) ===
 var comuni = [
-  { nume: "Iași", coord: [47.1585, 27.6014], dist: 0 },
-  { nume: "Miroslava", coord: [47.1317, 27.4822], dist: 7 },
-  { nume: "Holboca", coord: [47.1525, 27.6842], dist: 9 },
-  { nume: "Bârnova", coord: [47.0679, 27.6145], dist: 10 },
-  { nume: "Lețcani", coord: [47.1702, 27.4055], dist: 15 },
-  { nume: "Scânteia", coord: [46.9335, 27.6749], dist: 25 },
-  { nume: "Răducăneni", coord: [46.9446, 27.7767], dist: 30 },
-  { nume: "Hălăucești", coord: [47.1705, 26.8993], dist: 35 }
+  { nume: "Iași", coord: [47.1585, 27.6014], dist: 0, pop: 290422, altmin: 40, altmax: 250, padure: 1350 },
+  { nume: "Miroslava", coord: [47.1317, 27.4822], dist: 7, pop: 18000, altmin: 60, altmax: 240, padure: 820 },
+  { nume: "Holboca", coord: [47.1525, 27.6842], dist: 9, pop: 11000, altmin: 40, altmax: 160, padure: 650 },
+  { nume: "Bârnova", coord: [47.0679, 27.6145], dist: 10, pop: 7000, altmin: 80, altmax: 300, padure: 2150 },
+  { nume: "Lețcani", coord: [47.1702, 27.4055], dist: 15, pop: 9000, altmin: 50, altmax: 200, padure: 970 },
+  { nume: "Scânteia", coord: [46.9335, 27.6749], dist: 25, pop: 5000, altmin: 50, altmax: 170, padure: 480 },
+  { nume: "Răducăneni", coord: [46.9446, 27.7767], dist: 30, pop: 8000, altmin: 60, altmax: 190, padure: 540 },
+  { nume: "Hălăucești", coord: [47.1705, 26.8993], dist: 35, pop: 7500, altmin: 120, altmax: 250, padure: 620 }
 ];
 
 // === 4. Marker cluster + simbol copac ===
 var clusterGroup = L.markerClusterGroup({ showCoverageOnHover:false, maxClusterRadius:60 });
-var labelLayers = [];
+var routeLayer = L.layerGroup().addTo(map);
 
 comuni.forEach(c => {
-  // simbol SVG copac
+  // simbol SVG copac colorat
   var treeSVG = `
     <svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 512 512'>
       <circle cx='256' cy='256' r='80' fill='${getColor(c.dist)}'/>
@@ -103,32 +115,42 @@ comuni.forEach(c => {
     iconAnchor: [13, 26]
   });
 
-  var marker = L.marker(c.coord, { icon: iconTree }).addTo(clusterGroup);
+  var marker = L.marker(c.coord, { icon: iconTree });
 
-  // Eticheta (halo)
-  var tooltip = L.tooltip({
-    permanent: true,
-    direction: 'top',
-    offset: [0, -10],
-    className: 'halo-label'
-  }).setContent(c.nume).setLatLng(c.coord).addTo(map);
-  labelLayers.push(tooltip);
+  // popup Inspectorul Pădurii-style
+  var popupHTML = `
+    <div class='popup-title'>${c.nume}</div>
+    <div class='popup-section'><b>Date generale</b><br>
+      Populație: ${c.pop.toLocaleString()} locuitori<br>
+      Distanță față de Iași: ${c.dist} km<br>
+      Suprafață acoperită de pădure: ${c.padure} ha
+    </div>
+    <div class='popup-section'><b>Date geografice</b><br>
+      Altitudine min.: ${c.altmin} m<br>
+      Altitudine max.: ${c.altmax} m
+    </div>
+    <div class='popup-section'>
+      <button class='route-btn' onclick='drawRoute([47.1585,27.6014],[${c.coord}])'>Vezi rută</button>
+    </div>
+  `;
+  marker.bindPopup(popupHTML);
+  clusterGroup.addLayer(marker);
 });
-
 map.addLayer(clusterGroup);
 
-// === 5. Ascunde etichetele sub zoom 9 ===
-function updateLabelsVisibility() {
-  const z = map.getZoom();
-  labelLayers.forEach(l => {
-    if (z >= 10) { map.addLayer(l); }
-    else { map.removeLayer(l); }
-  });
+// === 5. Rută reală între Iași și comună ===
+function drawRoute(start, end) {
+  routeLayer.clearLayers();
+  fetch(`https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?geometries=geojson`)
+    .then(r => r.json())
+    .then(data => {
+      const coords = data.routes[0].geometry;
+      L.geoJSON(coords, { style:{ color:'#1f75fe', weight:4 } }).addTo(routeLayer);
+      map.fitBounds(L.geoJSON(coords).getBounds());
+    });
 }
-map.on('zoomend', updateLabelsVisibility);
-updateLabelsVisibility();
 
-// === 6. Limite comune din Inspectorul Pădurii ===
+// === 6. Limite comune din API ===
 const layerAmenaj = L.layerGroup();
 async function loadAmenaj() {
   const bbox = [46.9,26.5,47.6,28.1];
@@ -153,7 +175,8 @@ legend.onAdd = function() {
   }
   div.innerHTML += `<hr><div class='legend-title'>Straturi</div>
     <label><input type='checkbox' id='chk_points' checked> Comune (copaci)</label><br>
-    <label><input type='checkbox' id='chk_limits' checked> Limite comune</label>`;
+    <label><input type='checkbox' id='chk_limits' checked> Limite comune</label><br>
+    <label><input type='checkbox' id='chk_route' checked> Rută (vizibilă)</label>`;
   return div;
 };
 legend.addTo(map);
@@ -163,6 +186,9 @@ document.getElementById('chk_points').onchange = e => {
 };
 document.getElementById('chk_limits').onchange = e => {
   if(e.target.checked) map.addLayer(layerAmenaj); else map.removeLayer(layerAmenaj);
+};
+document.getElementById('chk_route').onchange = e => {
+  if(e.target.checked) map.addLayer(routeLayer); else map.removeLayer(routeLayer);
 };
 
 L.control.layers(baseMaps, null, {collapsed:false, position:'topleft'}).addTo(map);
