@@ -8,15 +8,23 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
 <style>
 html, body, #map { height: 100%; margin: 0; padding: 0; }
-.leaflet-control-layers {
-  font-size: 14px;
+
+.halo-label {
+  color: #000;
+  text-shadow:
+    -1px -1px 2px #fff,
+    1px -1px 2px #fff,
+    -1px 1px 2px #fff,
+    1px 1px 2px #fff;
+  font-weight: bold;
+  font-size: 13px;
 }
+
 .legend {
   background: white;
   padding: 10px;
@@ -34,11 +42,6 @@ html, body, #map { height: 100%; margin: 0; padding: 0; }
   height: 14px;
   border-radius: 50%;
   margin-right: 6px;
-}
-.popup-section {
-  border-top: 1px solid #ccc;
-  margin-top: 5px;
-  padding-top: 5px;
 }
 button.route-btn {
   background-color: #0066cc;
@@ -61,20 +64,16 @@ button.route-btn:hover {
 // === 1. Inițializare hartă ===
 var map = L.map('map').setView([47.16, 27.6], 10);
 
-// Fundal OSM
+// Fundaluri
 var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 18, attribution: '&copy; OpenStreetMap'
 }).addTo(map);
-
-// Fundal satelit (ESRI)
 var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
   maxZoom: 18, attribution: '&copy; Esri'
 });
-
-// Butoane OSM / Satelit
 var baseMaps = { "OSM": osm, "Satelit": sat };
 
-// === 2. Culori pentru distanță ===
+// === 2. Funcție culori ===
 function getColor(dist) {
   return dist <= 5  ? '#0055ff' :
          dist <= 10 ? '#00bfff' :
@@ -85,70 +84,58 @@ function getColor(dist) {
          dist <= 35 ? '#cc0000' : '#9933cc';
 }
 
-// === 3. Puncte comune ===
+// === 3. Date comune ===
 var comuni = [
-  { nume: "Iași", coord: [47.1585, 27.6014], dist: 0, pop: 290422, altmin: 40, altmax: 250 },
-  { nume: "Miroslava", coord: [47.1317, 27.4822], dist: 7, pop: 18000, altmin: 60, altmax: 240 },
-  { nume: "Holboca", coord: [47.1525, 27.6842], dist: 9, pop: 11000, altmin: 40, altmax: 160 },
-  { nume: "Bârnova", coord: [47.0679, 27.6145], dist: 10, pop: 7000, altmin: 80, altmax: 300 },
-  { nume: "Lețcani", coord: [47.1702, 27.4055], dist: 15, pop: 9000, altmin: 50, altmax: 200 },
-  { nume: "Scânteia", coord: [46.9335, 27.6749], dist: 25, pop: 5000, altmin: 50, altmax: 170 },
-  { nume: "Răducăneni", coord: [46.9446, 27.7767], dist: 30, pop: 8000, altmin: 60, altmax: 190 },
-  { nume: "Hălăucești", coord: [47.1705, 26.8993], dist: 35, pop: 7500, altmin: 120, altmax: 250 },
+  { nume: "Iași", coord: [47.1585, 27.6014], dist: 0 },
+  { nume: "Miroslava", coord: [47.1317, 27.4822], dist: 7 },
+  { nume: "Holboca", coord: [47.1525, 27.6842], dist: 9 },
+  { nume: "Bârnova", coord: [47.0679, 27.6145], dist: 10 },
+  { nume: "Lețcani", coord: [47.1702, 27.4055], dist: 15 },
+  { nume: "Scânteia", coord: [46.9335, 27.6749], dist: 25 },
+  { nume: "Răducăneni", coord: [46.9446, 27.7767], dist: 30 },
+  { nume: "Hălăucești", coord: [47.1705, 26.8993], dist: 35 }
 ];
 
-// Layer pentru puncte
-var clusterGroup = L.markerClusterGroup({ showCoverageOnHover:false, maxClusterRadius: 60 });
+// === 4. Marker cluster ===
+var clusterGroup = L.markerClusterGroup({ showCoverageOnHover:false, maxClusterRadius:60 });
+var labelLayers = []; // pentru tooltip-uri separate
 
-var markers = comuni.map(c => {
-  var m = L.circleMarker(c.coord, {
+comuni.forEach(c => {
+  var marker = L.circleMarker(c.coord, {
     radius: 7,
     color: '#fff',
     fillColor: getColor(c.dist),
     fillOpacity: 0.9,
     weight: 1
-  });
+  }).addTo(clusterGroup);
 
-  // popup structurat
-  var popupHTML = `
-    <b>${c.nume}</b>
-    <div class='popup-section'><b>Date generale</b><br>
-      Densitate: ${(c.pop/50).toFixed(1)} loc/km²<br>
-      Distanță față de Iași: ${c.dist} km
-    </div>
-    <div class='popup-section'><b>Date geografice</b><br>
-      Altitudine min.: ${c.altmin} m<br>
-      Altitudine max.: ${c.altmax} m
-    </div>
-    <div class='popup-section'>
-      <button class='route-btn' onclick='drawRoute([47.1585,27.6014],[${c.coord}])'>Vezi rută</button>
-    </div>
-  `;
-  m.bindPopup(popupHTML);
-  m.bindTooltip(c.nume, { permanent: true, direction: 'top', className: 'halo-label' });
-  return m;
+  // Tooltip permanent (halo)
+  var tooltip = L.tooltip({
+    permanent: true,
+    direction: 'top',
+    offset: [0, -8],
+    className: 'halo-label'
+  }).setContent(c.nume).setLatLng(c.coord).addTo(map);
+  labelLayers.push(tooltip);
 });
-clusterGroup.addLayers(markers);
 map.addLayer(clusterGroup);
 
-// === 4. Ruta Iași - Comună ===
-var routeLayer = L.layerGroup().addTo(map);
-function drawRoute(start, end) {
-  routeLayer.clearLayers();
-  fetch(`https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?geometries=geojson`)
-    .then(r => r.json())
-    .then(data => {
-      const coords = data.routes[0].geometry;
-      L.geoJSON(coords, { style:{ color:'#1f75fe', weight:4 } }).addTo(routeLayer);
-      map.fitBounds(L.geoJSON(coords).getBounds());
-    });
+// === 5. Ascunde etichetele sub zoom 9 ===
+function updateLabelsVisibility() {
+  const z = map.getZoom();
+  labelLayers.forEach(l => {
+    if (z >= 10) { map.addLayer(l); }
+    else { map.removeLayer(l); }
+  });
 }
+map.on('zoomend', updateLabelsVisibility);
+updateLabelsVisibility();
 
-// === 5. Limite comune și județ (din API Inspectorul Pădurii) ===
+// === 6. Limite comune din API ===
 const layerAmenaj = L.layerGroup();
 
 async function loadAmenaj() {
-  const bbox = [46.9,26.5,47.6,28.1]; // Iași lat,lon,lat,lon
+  const bbox = [46.9,26.5,47.6,28.1]; // Iași
   const url = `https://inspectorulpadurii.ro/api/layer/harti-amenajistice-stat?bbox=${bbox.join(',')},urn:ogc:def:crs:EPSG:4326`;
   try {
     const r = await fetch(url);
@@ -158,7 +145,7 @@ async function loadAmenaj() {
 }
 loadAmenaj();
 
-// === 6. Legendă + Straturi ===
+// === 7. Legendă + Straturi ===
 var legend = L.control({position:'topright'});
 legend.onAdd = function() {
   var div = L.DomUtil.create('div','legend');
@@ -170,21 +157,16 @@ legend.onAdd = function() {
   }
   div.innerHTML += `<hr><div class='legend-title'>Straturi</div>
     <label><input type='checkbox' id='chk_points' checked> Puncte comune</label><br>
-    <label><input type='checkbox' id='chk_limits' checked> Limite comune</label><br>
-    <label><input type='checkbox' id='chk_route' checked> Rută (vizibilă)</label>`;
+    <label><input type='checkbox' id='chk_limits' checked> Limite comune</label>`;
   return div;
 };
 legend.addTo(map);
 
-// === 7. Control pentru strat ===
 document.getElementById('chk_points').onchange = e => {
   if(e.target.checked) map.addLayer(clusterGroup); else map.removeLayer(clusterGroup);
 };
 document.getElementById('chk_limits').onchange = e => {
   if(e.target.checked) map.addLayer(layerAmenaj); else map.removeLayer(layerAmenaj);
-};
-document.getElementById('chk_route').onchange = e => {
-  if(e.target.checked) map.addLayer(routeLayer); else map.removeLayer(routeLayer);
 };
 
 L.control.layers(baseMaps, null, {collapsed:false, position:'topleft'}).addTo(map);
