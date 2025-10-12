@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GIS Viewer Iași</title>
+<title>GIS Viewer Iași - Comune</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
@@ -43,17 +43,6 @@ html, body, #map { height: 100%; margin: 0; padding: 0; }
   border-radius: 50%;
   margin-right: 6px;
 }
-button.route-btn {
-  background-color: #0066cc;
-  color: white;
-  border: none;
-  padding: 5px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-button.route-btn:hover {
-  background-color: #004c99;
-}
 </style>
 </head>
 
@@ -64,7 +53,6 @@ button.route-btn:hover {
 // === 1. Inițializare hartă ===
 var map = L.map('map').setView([47.16, 27.6], 10);
 
-// Fundaluri
 var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 18, attribution: '&copy; OpenStreetMap'
 }).addTo(map);
@@ -73,7 +61,7 @@ var sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Worl
 });
 var baseMaps = { "OSM": osm, "Satelit": sat };
 
-// === 2. Funcție culori ===
+// === 2. Culori ===
 function getColor(dist) {
   return dist <= 5  ? '#0055ff' :
          dist <= 10 ? '#00bfff' :
@@ -96,28 +84,37 @@ var comuni = [
   { nume: "Hălăucești", coord: [47.1705, 26.8993], dist: 35 }
 ];
 
-// === 4. Marker cluster ===
+// === 4. Marker cluster + simbol copac ===
 var clusterGroup = L.markerClusterGroup({ showCoverageOnHover:false, maxClusterRadius:60 });
-var labelLayers = []; // pentru tooltip-uri separate
+var labelLayers = [];
 
 comuni.forEach(c => {
-  var marker = L.circleMarker(c.coord, {
-    radius: 7,
-    color: '#fff',
-    fillColor: getColor(c.dist),
-    fillOpacity: 0.9,
-    weight: 1
-  }).addTo(clusterGroup);
+  // simbol SVG copac
+  var treeSVG = `
+    <svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 512 512'>
+      <circle cx='256' cy='256' r='80' fill='${getColor(c.dist)}'/>
+      <rect x='240' y='280' width='32' height='80' fill='#6b4423'/>
+      <path d='M256 140 C200 180 220 260 256 240 C292 260 312 180 256 140Z' fill='${getColor(c.dist)}' />
+    </svg>`;
+  var iconTree = L.divIcon({
+    html: treeSVG,
+    className: "",
+    iconSize: [26, 26],
+    iconAnchor: [13, 26]
+  });
 
-  // Tooltip permanent (halo)
+  var marker = L.marker(c.coord, { icon: iconTree }).addTo(clusterGroup);
+
+  // Eticheta (halo)
   var tooltip = L.tooltip({
     permanent: true,
     direction: 'top',
-    offset: [0, -8],
+    offset: [0, -10],
     className: 'halo-label'
   }).setContent(c.nume).setLatLng(c.coord).addTo(map);
   labelLayers.push(tooltip);
 });
+
 map.addLayer(clusterGroup);
 
 // === 5. Ascunde etichetele sub zoom 9 ===
@@ -131,11 +128,10 @@ function updateLabelsVisibility() {
 map.on('zoomend', updateLabelsVisibility);
 updateLabelsVisibility();
 
-// === 6. Limite comune din API ===
+// === 6. Limite comune din Inspectorul Pădurii ===
 const layerAmenaj = L.layerGroup();
-
 async function loadAmenaj() {
-  const bbox = [46.9,26.5,47.6,28.1]; // Iași
+  const bbox = [46.9,26.5,47.6,28.1];
   const url = `https://inspectorulpadurii.ro/api/layer/harti-amenajistice-stat?bbox=${bbox.join(',')},urn:ogc:def:crs:EPSG:4326`;
   try {
     const r = await fetch(url);
@@ -156,7 +152,7 @@ legend.onAdd = function() {
       ${grades[i]}–${grades[i+1]||'>'} km</div>`;
   }
   div.innerHTML += `<hr><div class='legend-title'>Straturi</div>
-    <label><input type='checkbox' id='chk_points' checked> Puncte comune</label><br>
+    <label><input type='checkbox' id='chk_points' checked> Comune (copaci)</label><br>
     <label><input type='checkbox' id='chk_limits' checked> Limite comune</label>`;
   return div;
 };
